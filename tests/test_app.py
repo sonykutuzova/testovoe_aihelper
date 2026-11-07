@@ -188,9 +188,16 @@ class ApiTests(unittest.TestCase):
         with urllib.request.urlopen(self.url + '/health') as response:
             self.assertEqual(json.load(response), {'status': 'ok'})
         with self.assertRaises(urllib.error.HTTPError) as cm:
-            urllib.request.urlopen(self.url)
+            urllib.request.urlopen(self.url + "/unknown")
         self.assertEqual(cm.exception.code, 404)
         cm.exception.close()
+
+    def test_ui_assets(self):
+        for path, mime in [('/', 'text/html'), ('/app.js', 'text/javascript'), ('/style.css', 'text/css')]:
+            with self.subTest(path=path), urllib.request.urlopen(self.url + path) as response:
+                self.assertEqual(response.status, 200)
+                self.assertEqual(response.headers.get_content_type(), mime)
+                self.assertTrue(response.read())
 
     def test_generate(self):
         req = urllib.request.Request(self.url + '/generate', data=json.dumps(source()).encode(),

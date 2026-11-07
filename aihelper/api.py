@@ -1,6 +1,7 @@
 """Локальный HTTP API без внешних зависимостей."""
 import json
 import threading
+from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .domain import AppError, MAX_BODY, parse_json
@@ -18,13 +19,14 @@ def make_server(provider, port=8000):
         def log_message(self, format, *args):
             pass
 
-        def reply(self, status, data):
-            body = json.dumps(data, ensure_ascii=False).encode("utf-8")
+        def reply(self, status, data, content_type="application/json; charset=utf-8"):
+            body = data if isinstance(data, bytes) else json.dumps(data, ensure_ascii=False).encode("utf-8")
             self.send_response(status)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Content-Security-Policy", "default-src 'self'; object-src 'none'; frame-ancestors 'none'")
             self.end_headers()
             self.wfile.write(body)
 
@@ -40,7 +42,16 @@ def make_server(provider, port=8000):
         def do_GET(self):
             if not self.local_request():
                 return
-            if self.path == "/health":
+            assets = {
+                "/": ("index.html", "text/html"),
+                "/app.js": ("app.js", "text/javascript"),
+                "/style.css": ("style.css", "text/css"),
+            }
+            if self.path in assets:
+                name, mime = assets[self.path]
+                body = (Path(__file__).parent / "static" / name).read_bytes()
+                self.reply(200, body, mime + "; charset=utf-8")
+            elif self.path == "/health":
                 self.reply(200, {"status": "ok"})
             else:
                 self.reply(404, {"error": {"message": "Метод не найден."}})
